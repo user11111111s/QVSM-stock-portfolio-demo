@@ -1,127 +1,108 @@
-# Stock Risk Classification using Classical ML and QSVM
+# Quantum-Ready Stock Risk Prediction (QSVM + Classical ML)
 
-## Project Overview
+## Overview
 
-This project builds a stock risk classification model using:
+This project builds a stock risk prediction model using:
 
-* Logistic Regression
-* Support Vector Machine (SVM)
-* Quantum Support Vector Machine (QSVM structure)
+- Logistic Regression (baseline)
+- Classical SVM (RBF kernel)
+- Quantum Support Vector Machine (QSVM) with safe fallback
 
-The objective is to predict whether a stock will enter a **high volatility (high risk) period in the near future**, based on historical behavior.
+The model predicts **future market risk (volatility)** using behavior-based financial features instead of raw stock prices.
 
-Instead of using raw stock prices, this project focuses on behavioral signals such as returns and volatility.
+---
+
+## Why This Project Is Different
+
+Instead of using raw stock prices (which are non-stationary), this project uses:
+
+- Log Returns
+- Rolling Volatility
+- Normalized Volume (Z-score)
+
+This ensures:
+- No price-level bias
+- No trend leakage
+- Time-series correct splitting
+- Proper future prediction setup
+
+The model predicts whether the **next 5-day volatility** will be above or below median risk.
 
 ---
 
 ## Dataset
 
-* Historical stock data (1980–2022)
-* Columns used: Date, Close, Volume
-* Data processed using time-series principles (no shuffling)
+- Historical stock data (1980–2022)
+- 10,000+ trading days
+- Features engineered from raw OHLCV data
+
+Data file location:
+```
+data/stock_data.csv
+```
 
 ---
 
 ## Feature Engineering
 
-To make the model reliable and avoid misleading patterns, the following transformations were applied:
+1. **Log Return**
+   r_t = ln(P_t / P_t-1)
 
-### 1. Log Returns
+2. **Rolling Volatility (10-day window)**
 
-Used instead of raw price:
+3. **Volume Z-score (20-day rolling normalization)**
 
-rₜ = ln(Pₜ / Pₜ₋₁)
+4. **Future Volatility Label (5-day forward window)**  
+   - Label = 1 → High future risk  
+   - Label = 0 → Low future risk  
 
-This removes price trends and makes the data more stable.
-
-### 2. Rolling Volatility (10-day window)
-
-Measures short-term instability.
-
-### 3. Volume Z-Score (20-day window)
-
-Normalizes trading activity to detect unusual spikes.
-
-These features help the model learn stock behavior rather than price level.
+No data leakage is used.
 
 ---
 
-## Target Variable (Risk Label)
+## Model Pipeline
 
-The model predicts **future volatility**, not current volatility.
+### 1. Chronological Train-Test Split
+Time-series correct split (75% train, 25% test)
 
-Steps:
+### 2. Feature Scaling
+MinMaxScaler range (-1, 1)  
+Quantum circuits require normalized input ranges.
 
-* Compute 5-day forward rolling volatility
-* Use median threshold to classify:
+### 3. Classical Models
+- Logistic Regression
+- SVM (RBF)
 
-  * 1 → High Risk
-  * 0 → Low Risk
-
-Chronological split is used to avoid data leakage.
-
----
-
-## Model Implementation
-
-### Classical Models
-
-* Logistic Regression
-* SVM with RBF kernel
-
-### Quantum Model (QSVM Structure)
-
-The QSVM implementation follows the correct architecture:
-
-1. Apply Quantum Feature Map (ZZFeatureMap)
-2. Compute kernel matrix
-3. Train SVM using precomputed kernel
-
-To ensure compatibility across systems, the script:
-
-* Attempts real quantum kernel execution
-* Falls back to a classical RBF kernel proxy if quantum primitives are unavailable
-
-This maintains the full QSVM workflow.
+### 4. QSVM Block
+- Attempts real quantum kernel using Qiskit
+- If environment mismatch → safely falls back to classical RBF proxy
+- Designed to never crash the script
 
 ---
 
-## Why Only 120 Samples for QSVM?
+## Visualizations
 
-Quantum kernel simulation is computationally expensive.
+The script generates:
 
-To prevent system slowdown:
+- Model Accuracy Comparison Bar Chart
+- Confusion Matrix (SVM)
+- Rolling Volatility Time-Series Plot
 
-* Only the most recent 120 samples are used
-* Chronological split is preserved
-
-This allows safe execution while demonstrating the quantum structure.
-
----
-
-## Results
-
-Classical Models:
-
-* Logistic Regression Accuracy ≈ 72–73%
-* SVM Accuracy ≈ 67–73%
-
-QSVM (Proxy Mode):
-
-* Accuracy ≈ 73%
-
-In financial prediction problems, anything above 70% is considered strong due to market randomness.
+These graphs make the results easier to interpret.
 
 ---
 
-## Key Highlights
+## Example Results
 
-* No data leakage
-* Time-series aware splitting
-* Stationarity handled correctly
-* Proper quantum scaling (-1 to 1)
-* Robust and system-safe implementation
-* Real historical stock dataset
+Typical results (full dataset):
+
+- Logistic Regression: ~72–73% accuracy
+- Classical SVM: ~67–70% accuracy
+- QSVM / Proxy: ~73% accuracy
+
+Note:
+Financial prediction is noisy and difficult.  
+70% accuracy in future volatility classification is strong.
 
 ---
 
@@ -134,7 +115,7 @@ ML-CIA(STOCK PORTFOLIO)/
 │   └── stock_data.csv
 │
 ├── src/
-│   └── demo_qsvm.py
+│   └── final_demo_qsvm_portfolio.py
 │
 ├── requirements.txt
 └── README.md
@@ -144,24 +125,54 @@ ML-CIA(STOCK PORTFOLIO)/
 
 ## How to Run
 
-Create virtual environment:
+1. Create virtual environment:
 
 ```
 python -m venv venv
+```
+
+2. Activate it:
+
+Windows:
+```
 venv\Scripts\activate
 ```
 
-Install dependencies:
+3. Install requirements:
 
 ```
 pip install -r requirements.txt
 ```
 
-Run:
+4. Run the script:
 
 ```
-python demo_qsvm.py
+python src/final_demo_qsvm_portfolio.py
 ```
+
+---
+
+## Optional: Enable Full Quantum Mode
+
+If you want real QSVM execution:
+
+```
+pip install qiskit qiskit-machine-learning qiskit-aer
+```
+
+If Qiskit versions conflict, the script automatically switches to proxy mode.
+
+---
+
+## Key Highlights
+
+✔ No data leakage  
+✔ Time-series correct splitting  
+✔ Stationary financial features  
+✔ Quantum-ready scaling  
+✔ Robust QSVM compatibility block  
+✔ Clean visualizations  
+✔ Safe fallback system  
 
 ---
 
@@ -169,11 +180,12 @@ python demo_qsvm.py
 
 This project demonstrates:
 
-* Practical financial machine learning
-* Proper time-series handling
-* Feature engineering for stock behavior
-* Implementation of QSVM architecture
-* Comparison between classical and quantum-based approaches
+- Proper financial feature engineering
+- Classical vs Quantum kernel comparison
+- Robust ML system design
+- Practical constraints of quantum simulators
 
-The structure is scalable and can be extended for portfolio-level optimization in future work.
+It combines financial modeling principles with Quantum Machine Learning experimentation in a stable, reproducible pipeline.
+
+---
 
