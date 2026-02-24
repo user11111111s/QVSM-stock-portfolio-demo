@@ -1,6 +1,6 @@
 # final_demo_qsvm_portfolio.py
 # ===============================
-# Quantum-Ready Stock Risk Model (with Visualizations)
+# Quantum-Ready Stock Risk Model (Improved Balanced QSVM)
 # ===============================
 
 import numpy as np
@@ -10,6 +10,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
+from sklearn.metrics.pairwise import rbf_kernel
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -27,13 +28,11 @@ print("Total rows loaded:", len(df))
 # ---------------------------
 df['Log_Return'] = np.log(df['Close'] / df['Close'].shift(1))
 
-VOL_WINDOW = 10
-df['Volatility'] = df['Log_Return'].rolling(window=VOL_WINDOW).std()
+df['Volatility'] = df['Log_Return'].rolling(window=10).std()
 
-VOL_Z_WINDOW = 20
 df['Volume_Scaled'] = (
-    df['Volume'] - df['Volume'].rolling(window=VOL_Z_WINDOW).mean()
-) / df['Volume'].rolling(window=VOL_Z_WINDOW).std()
+    df['Volume'] - df['Volume'].rolling(window=20).mean()
+) / df['Volume'].rolling(window=20).std()
 
 df = df.dropna().reset_index(drop=True)
 print("Rows after initial cleaning:", len(df))
@@ -41,15 +40,15 @@ print("Rows after initial cleaning:", len(df))
 # ---------------------------
 # 3. Future Risk Label
 # ---------------------------
-FUTURE_WINDOW = 5
 df['Future_Volatility'] = (
     df['Log_Return']
-    .rolling(window=FUTURE_WINDOW)
+    .rolling(window=5)
     .std()
-    .shift(-FUTURE_WINDOW)
+    .shift(-5)
 )
 
 df = df.dropna().reset_index(drop=True)
+
 future_threshold = df['Future_Volatility'].median()
 df['Risk_Label'] = (df['Future_Volatility'] > future_threshold).astype(int)
 
@@ -58,7 +57,8 @@ print("Rows after future labeling:", len(df))
 # ---------------------------
 # 4. Define Features
 # ---------------------------
-X_full = df[['Log_Return', 'Volatility', 'Volume_Scaled']].values
+features = ['Log_Return', 'Volatility', 'Volume_Scaled']
+X_full = df[features].values
 y_full = df['Risk_Label'].values
 
 # ---------------------------
@@ -78,7 +78,7 @@ X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled  = scaler.transform(X_test)
 
 # ---------------------------
-# 7. Classical Models
+# 7. Classical Models (Balanced + Tuned)
 # ---------------------------
 print("\n--- Training Classical Models ---")
 
@@ -86,7 +86,8 @@ lr = LogisticRegression(max_iter=500)
 lr.fit(X_train_scaled, y_train)
 lr_preds = lr.predict(X_test_scaled)
 
-svc_rbf = SVC(kernel='rbf')
+# Tuned SVM
+svc_rbf = SVC(kernel='rbf', C=10, gamma='scale', class_weight='balanced')
 svc_rbf.fit(X_train_scaled, y_train)
 svm_preds = svc_rbf.predict(X_test_scaled)
 
@@ -94,17 +95,17 @@ lr_acc = accuracy_score(y_test, lr_preds)
 svm_acc = accuracy_score(y_test, svm_preds)
 
 print("\nLogistic Regression Accuracy:", lr_acc)
-print("SVM Accuracy:", svm_acc)
+print("Balanced Tuned SVM Accuracy:", svm_acc)
 
 # ---------------------------
-# 8. QSVM (Proxy-safe)
+# 8. QSVM (Improved Proxy)
 # ---------------------------
-print("\n--- Running QSVM (Safe Mode) ---")
+print("\n--- Running QSVM (Balanced Proxy Mode) ---")
 
-QSVM_MAX = 120
+QSVM_MAX = 180   # Increased slightly (safe range)
 df_qsvm_small = df.tail(QSVM_MAX).reset_index(drop=True)
 
-X_q = df_qsvm_small[['Log_Return', 'Volatility', 'Volume_Scaled']].values
+X_q = df_qsvm_small[features].values
 y_q = df_qsvm_small['Risk_Label'].values
 
 split_q = int(len(X_q) * 0.75)
@@ -117,26 +118,26 @@ scaler_q = MinMaxScaler(feature_range=(-1, 1))
 Xq_train_scaled = scaler_q.fit_transform(Xq_train)
 Xq_test_scaled  = scaler_q.transform(Xq_test)
 
-from sklearn.metrics.pairwise import rbf_kernel
+# Tuned gamma for better separation
+K_train = rbf_kernel(Xq_train_scaled, Xq_train_scaled, gamma=0.5)
+K_test  = rbf_kernel(Xq_test_scaled, Xq_train_scaled, gamma=0.5)
 
-K_train = rbf_kernel(Xq_train_scaled, Xq_train_scaled, gamma=1.0)
-K_test  = rbf_kernel(Xq_test_scaled, Xq_train_scaled, gamma=1.0)
-
-svc_q = SVC(kernel='precomputed')
+# Balanced QSVM
+svc_q = SVC(kernel='precomputed', C=5, class_weight='balanced')
 svc_q.fit(K_train, yq_train)
-qsvm_preds = svc_q.predict(K_test)
 
+qsvm_preds = svc_q.predict(K_test)
 qsvm_acc = accuracy_score(yq_test, qsvm_preds)
 
-print("QSVM (Proxy) Accuracy:", qsvm_acc)
+print("Balanced QSVM (Proxy) Accuracy:", qsvm_acc)
 
 # ===============================
 # VISUALIZATIONS
 # ===============================
 
-# 1️⃣ Accuracy Comparison
+# Accuracy Comparison
 plt.figure(figsize=(6,4))
-models = ['Logistic Regression', 'SVM', 'QSVM']
+models = ['Logistic Regression', 'Balanced SVM', 'Balanced QSVM']
 accuracies = [lr_acc, svm_acc, qsvm_acc]
 plt.bar(models, accuracies)
 plt.ylim(0,1)
@@ -144,12 +145,12 @@ plt.ylabel("Accuracy")
 plt.title("Model Accuracy Comparison")
 plt.show()
 
-# 2️⃣ Confusion Matrix (SVM example)
-cm = confusion_matrix(y_test, svm_preds)
+# Confusion Matrix (QSVM now)
+cm = confusion_matrix(yq_test, qsvm_preds)
 
 plt.figure(figsize=(5,4))
 plt.imshow(cm, interpolation='nearest')
-plt.title("Confusion Matrix - SVM")
+plt.title("Confusion Matrix - Balanced QSVM")
 plt.colorbar()
 plt.xlabel("Predicted Label")
 plt.ylabel("True Label")
@@ -160,7 +161,7 @@ for i in range(cm.shape[0]):
 
 plt.show()
 
-# 3️⃣ Volatility Over Time
+# Volatility Graph
 plt.figure(figsize=(10,4))
 plt.plot(df['Date'], df['Volatility'], label='Volatility')
 plt.title("Rolling Volatility Over Time")
@@ -169,4 +170,4 @@ plt.ylabel("Volatility")
 plt.legend()
 plt.show()
 
-print("\nScript completed successfully with visual outputs.")
+print("\nScript completed successfully with balanced QSVM improvements.")
